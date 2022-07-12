@@ -253,14 +253,42 @@ fu_wac_firmware_tokenize_cb(GString *token, guint token_idx, gpointer user_data,
 }
 
 static gboolean
+fu_wac_firmware_check_magic(FuFirmware *firmware, GBytes *fw, gsize offset, GError **error)
+{
+	guint8 magic[5] = {0x0};
+
+	if (!fu_memcpy_safe(magic,
+			    sizeof(magic),
+			    0, /* dst */
+			    g_bytes_get_data(fw, NULL),
+			    g_bytes_get_size(fw),
+			    offset,
+			    sizeof(magic),
+			    error)) {
+		g_prefix_error(error, "failed to read magic: ");
+		return FALSE;
+	}
+	if (memcmp(magic, "WACOM", sizeof(magic)) != 0) {
+		g_set_error_literal(error,
+				    FWUPD_ERROR,
+				    FWUPD_ERROR_INVALID_FILE,
+				    "invalid .wac prefix");
+		return FALSE;
+	}
+
+	/* success */
+	return TRUE;
+}
+
+static gboolean
 fu_wac_firmware_parse(FuFirmware *firmware,
 		      GBytes *fw,
 		      gsize offset,
 		      FwupdInstallFlags flags,
 		      GError **error)
 {
-	gsize sz = 0;
-	const gchar *data = g_bytes_get_data(fw, &sz);
+	gsize bufsz = 0;
+	const guint8 *buf = g_bytes_get_data(fw, &bufsz);
 	g_autoptr(GPtrArray) header_infos = g_ptr_array_new_with_free_func(g_free);
 	g_autoptr(GString) image_buffer = g_string_new(NULL);
 	FuWacFirmwareTokenHelper helper = {.firmware = firmware,
@@ -269,17 +297,13 @@ fu_wac_firmware_parse(FuFirmware *firmware,
 					   .image_buffer = image_buffer,
 					   .images_cnt = 0};
 
-	/* check the prefix (BE) */
-	if (sz < 5 || memcmp(data, "WACOM", 5) != 0) {
-		g_set_error_literal(error,
-				    FWUPD_ERROR,
-				    FWUPD_ERROR_INTERNAL,
-				    "invalid .wac prefix");
-		return FALSE;
-	}
-
 	/* tokenize */
-	if (!fu_strsplit_full(data, sz, "\n", fu_wac_firmware_tokenize_cb, &helper, error))
+	if (!fu_strsplit_full((const gchar *)buf + offset,
+			      bufsz - offset,
+			      "\n",
+			      fu_wac_firmware_tokenize_cb,
+			      &helper,
+			      error))
 		return FALSE;
 
 	/* verify data is complete */
@@ -365,6 +389,7 @@ static void
 fu_wac_firmware_class_init(FuWacFirmwareClass *klass)
 {
 	FuFirmwareClass *klass_firmware = FU_FIRMWARE_CLASS(klass);
+	klass_firmware->check_magic = fu_wac_firmware_check_magic;
 	klass_firmware->parse = fu_wac_firmware_parse;
 	klass_firmware->write = fu_wac_firmware_write;
 }

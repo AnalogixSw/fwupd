@@ -47,6 +47,8 @@ G_DEFINE_TYPE_WITH_PRIVATE(FuFirmware, fu_firmware, G_TYPE_OBJECT)
 
 enum { PROP_0, PROP_PARENT, PROP_LAST };
 
+#define FU_FIRMWARE_SEARCH_MAGIC_BUFSZ_MAX (32 * 1024 * 1024)
+
 /**
  * fu_firmware_flag_to_string:
  * @flag: a #FuFirmwareFlags, e.g. %FU_FIRMWARE_FLAG_DEDUPE_ID
@@ -74,6 +76,8 @@ fu_firmware_flag_to_string(FuFirmwareFlags flag)
 		return "done-parse";
 	if (flag == FU_FIRMWARE_FLAG_HAS_STORED_SIZE)
 		return "has-stored-size";
+	if (flag == FU_FIRMWARE_FLAG_SEARCH_FOR_MAGIC)
+		return "search-for-magic";
 	return NULL;
 }
 
@@ -102,6 +106,8 @@ fu_firmware_flag_from_string(const gchar *flag)
 		return FU_FIRMWARE_FLAG_DONE_PARSE;
 	if (g_strcmp0(flag, "has-stored-size") == 0)
 		return FU_FIRMWARE_FLAG_HAS_STORED_SIZE;
+	if (g_strcmp0(flag, "search-for-magic") == 0)
+		return FU_FIRMWARE_FLAG_SEARCH_FOR_MAGIC;
 	return FU_FIRMWARE_FLAG_NONE;
 }
 
@@ -770,6 +776,64 @@ fu_firmware_tokenize(FuFirmware *self, GBytes *fw, FwupdInstallFlags flags, GErr
 	return TRUE;
 }
 
+static gboolean
+fu_firmware_check_magic_for_offset(FuFirmware *self,
+				   GBytes *fw,
+				   gsize *offset,
+				   FwupdInstallFlags flags,
+				   GError **error)
+{
+	FuFirmwareClass *klass = FU_FIRMWARE_GET_CLASS(self);
+
+	/* not implemented */
+	if (klass->check_magic == NULL)
+		return TRUE;
+
+	/* fuzzing */
+	if ((flags & FWUPD_INSTALL_FLAG_NO_SEARCH) > 0) {
+		if (!klass->check_magic(self, fw, *offset, error)) {
+			g_prefix_error(error, "not searching magic due to install flags: ");
+			return FALSE;
+		}
+		return TRUE;
+	}
+
+	/* unable to search */
+	if (!fu_firmware_has_flag(self, FU_FIRMWARE_FLAG_SEARCH_FOR_MAGIC)) {
+		if (!klass->check_magic(self, fw, *offset, error)) {
+			g_prefix_error(error, "firmware cannot search for magic: ");
+			return FALSE;
+		}
+		return TRUE;
+	}
+
+	/* limit the size of firmware we search */
+	if (g_bytes_get_size(fw) > FU_FIRMWARE_SEARCH_MAGIC_BUFSZ_MAX) {
+		if (!klass->check_magic(self, fw, *offset, error)) {
+			g_prefix_error(error,
+				       "failed to search for magic as firmware size was 0x%x and "
+				       "limit was 0x%x: ",
+				       (guint)g_bytes_get_size(fw),
+				       (guint)FU_FIRMWARE_SEARCH_MAGIC_BUFSZ_MAX);
+			return FALSE;
+		}
+		return TRUE;
+	}
+
+	/* increment the offset, looking for the magic */
+	for (gsize offset_tmp = *offset; offset_tmp < g_bytes_get_size(fw); offset_tmp++) {
+		if (klass->check_magic(self, fw, offset_tmp, NULL)) {
+			fu_firmware_set_offset(self, offset_tmp);
+			*offset = offset_tmp;
+			return TRUE;
+		}
+	}
+
+	/* did not find what we were looking for */
+	g_set_error_literal(error, FWUPD_ERROR, FWUPD_ERROR_INVALID_FILE, "did not find magic");
+	return FALSE;
+}
+
 /**
  * fu_firmware_parse_full:
  * @self: a #FuFirmware
@@ -823,6 +887,8 @@ fu_firmware_parse_full(FuFirmware *self,
 		if (!klass->tokenize(self, fw, flags, error))
 			return FALSE;
 	}
+	if (!fu_firmware_check_magic_for_offset(self, fw, &offset, flags, error))
+		return FALSE;
 	if (klass->parse != NULL)
 		return klass->parse(self, fw, offset, flags, error);
 

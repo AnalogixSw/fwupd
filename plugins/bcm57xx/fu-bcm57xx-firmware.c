@@ -302,6 +302,34 @@ fu_bcm57xx_firmware_parse_dict(FuBcm57xxFirmware *self,
 }
 
 static gboolean
+fu_bcm57xx_firmware_check_magic(FuFirmware *firmware, GBytes *fw, gsize offset, GError **error)
+{
+	guint32 magic = 0;
+
+	if (!fu_memread_uint32_safe(g_bytes_get_data(fw, NULL),
+				    g_bytes_get_size(fw),
+				    0x0,
+				    &magic,
+				    G_BIG_ENDIAN,
+				    error)) {
+		g_prefix_error(error, "failed to read magic: ");
+		return FALSE;
+	}
+	if (magic != BCM_APE_HEADER_MAGIC && magic != BCM_STAGE1_HEADER_MAGIC_BROADCOM &&
+	    magic != BCM_STAGE1_HEADER_MAGIC_MEKLORT && magic != BCM_NVRAM_MAGIC) {
+		g_set_error(error,
+			    FWUPD_ERROR,
+			    FWUPD_ERROR_INVALID_FILE,
+			    "file not supported, got: 0x%08X",
+			    magic);
+		return FALSE;
+	}
+
+	/* success */
+	return TRUE;
+}
+
+static gboolean
 fu_bcm57xx_firmware_parse(FuFirmware *firmware,
 			  GBytes *fw,
 			  gsize offset,
@@ -626,6 +654,7 @@ static void
 fu_bcm57xx_firmware_class_init(FuBcm57xxFirmwareClass *klass)
 {
 	FuFirmwareClass *klass_firmware = FU_FIRMWARE_CLASS(klass);
+	klass_firmware->check_magic = fu_bcm57xx_firmware_check_magic;
 	klass_firmware->parse = fu_bcm57xx_firmware_parse;
 	klass_firmware->export = fu_bcm57xx_firmware_export;
 	klass_firmware->write = fu_bcm57xx_firmware_write;

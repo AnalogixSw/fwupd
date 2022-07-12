@@ -26,6 +26,34 @@
 G_DEFINE_TYPE(FuFmapFirmware, fu_fmap_firmware, FU_TYPE_FIRMWARE)
 
 static gboolean
+fu_fmap_firmware_check_magic(FuFirmware *firmware, GBytes *fw, gsize offset, GError **error)
+{
+	guint8 magic[8] = {0x0};
+
+	if (!fu_memcpy_safe(magic,
+			    sizeof(magic),
+			    0, /* dst */
+			    g_bytes_get_data(fw, NULL),
+			    g_bytes_get_size(fw),
+			    offset,
+			    sizeof(magic),
+			    error)) {
+		g_prefix_error(error, "failed to read magic: ");
+		return FALSE;
+	}
+	if (memcmp(magic, FMAP_SIGNATURE, sizeof(magic)) != 0) {
+		g_set_error_literal(error,
+				    FWUPD_ERROR,
+				    FWUPD_ERROR_INVALID_FILE,
+				    "invalid magic for file");
+		return FALSE;
+	}
+
+	/* success */
+	return TRUE;
+}
+
+static gboolean
 fu_fmap_firmware_parse(FuFirmware *firmware,
 		       GBytes *fw,
 		       gsize offset,
@@ -200,12 +228,14 @@ fu_fmap_firmware_write(FuFirmware *firmware, GError **error)
 static void
 fu_fmap_firmware_init(FuFmapFirmware *self)
 {
+	fu_firmware_add_flag(FU_FIRMWARE(self), FU_FIRMWARE_FLAG_SEARCH_FOR_MAGIC);
 }
 
 static void
 fu_fmap_firmware_class_init(FuFmapFirmwareClass *klass)
 {
 	FuFirmwareClass *klass_firmware = FU_FIRMWARE_CLASS(klass);
+	klass_firmware->check_magic = fu_fmap_firmware_check_magic;
 	klass_firmware->parse = fu_fmap_firmware_parse;
 	klass_firmware->write = fu_fmap_firmware_write;
 }

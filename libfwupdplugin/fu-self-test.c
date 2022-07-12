@@ -3103,6 +3103,8 @@ fu_firmware_builder_round_trip_func(void)
 		g_assert_no_error(error);
 		g_assert_nonnull(blob);
 		ret = fu_firmware_parse(firmware3, blob, FWUPD_INSTALL_FLAG_NONE, &error);
+		if (!ret)
+			g_prefix_error(&error, "%s: ", map[i].xml_fn);
 		g_assert_no_error(error);
 		g_assert_true(ret);
 

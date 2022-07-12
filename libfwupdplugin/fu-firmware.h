@@ -62,8 +62,9 @@ struct _FuFirmwareClass {
 	gchar *(*get_checksum)(FuFirmware *self,
 			       GChecksumType csum_kind,
 			       GError **error)G_GNUC_WARN_UNUSED_RESULT;
+	gboolean (*check_magic)(FuFirmware *self, GBytes *fw, gsize offset, GError **error);
 	/*< private >*/
-	gpointer padding[26];
+	gpointer padding[25];
 };
 
 /**
@@ -122,6 +123,14 @@ struct _FuFirmwareClass {
  * Since: 1.8.2
  **/
 #define FU_FIRMWARE_FLAG_HAS_STORED_SIZE (1u << 5)
+/**
+ * FU_FIRMWARE_FLAG_SEARCH_FOR_MAGIC:
+ *
+ * Search for the magic anywhere in the firmware image.
+ *
+ * Since: 1.8.3
+ **/
+#define FU_FIRMWARE_FLAG_SEARCH_FOR_MAGIC (1u << 6)
 
 /**
  * FuFirmwareFlags:

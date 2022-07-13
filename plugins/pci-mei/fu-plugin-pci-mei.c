@@ -504,7 +504,7 @@ fu_plugin_pci_mei_add_security_attrs(FuPlugin *plugin, FuSecurityAttrs *attrs)
 	/* only Intel */
 	if (fu_cpu_get_vendor() != FU_CPU_VENDOR_INTEL)
 		return;
-	if (priv->pci_device == NULL)
+	if (priv == NULL || priv->pci_device == NULL)
 		return;
 
 	fu_plugin_add_security_attrs_manufacturing_mode(plugin, attrs);

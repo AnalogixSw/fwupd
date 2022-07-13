@@ -461,6 +461,12 @@ fu_plugin_add_security_attr_amd_sme_enabled(FuPlugin *plugin, FuSecurityAttrs *a
 static void
 fu_plugin_msr_add_security_attrs(FuPlugin *plugin, FuSecurityAttrs *attrs)
 {
+	FuPluginData *priv = fu_plugin_get_data(plugin);
+
+	/* not enabled */
+	if (priv == NULL)
+		return;
+
 	fu_plugin_add_security_attr_dci_enabled(plugin, attrs);
 	fu_plugin_add_security_attr_dci_locked(plugin, attrs);
 	fu_plugin_add_security_attr_amd_sme_enabled(plugin, attrs);
